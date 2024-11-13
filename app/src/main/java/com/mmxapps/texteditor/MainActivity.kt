@@ -4,8 +4,6 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -31,6 +29,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarColors
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -65,11 +64,44 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun TextEditorScreen() {
     var editorText by remember { mutableStateOf("") }
-
+    var filename by remember { mutableStateOf("") }
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Simple Text Editor") },
+                title = {
+                    BasicTextField(
+                        value = filename,
+                        onValueChange = { newText -> filename = newText },
+                        maxLines = 1,
+                        textStyle = TextStyle(
+                            color = Color.White,
+                            fontSize = 16.sp),
+                        cursorBrush = SolidColor(MaterialTheme.colorScheme.onSurface),
+                        decorationBox = { innerTextField ->
+                            Box(
+                                modifier = Modifier
+                                    .padding(top = 4.dp)
+                            ) {
+                                if (filename.isEmpty()) {
+                                    Text(
+                                        "*Untitled.txt",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                                    )
+                                }
+                                innerTextField()
+                            }
+                        }
+
+                    )
+                },
+                colors = TopAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surface,
+                    navigationIconContentColor = MaterialTheme.colorScheme.onSurface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface,
+                    actionIconContentColor = MaterialTheme.colorScheme.onSurface
+                ),
                 actions = {
                     IconButton(onClick = { editorText = "" }) {
                         Icon(Icons.Default.Add, contentDescription = "New")
@@ -135,7 +167,8 @@ fun TextEditorScreen() {
                             text = (index + 1).toString(),
                             modifier = Modifier
                                 .padding(top = 4.dp)
-                                .fillMaxWidth(),
+                                .fillMaxWidth()
+                                .height(20.dp),
                             textAlign = TextAlign.End,
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
@@ -143,10 +176,11 @@ fun TextEditorScreen() {
                         )
 
                         // Add spacing for wrapped lines
+
                         if (wrappedLines > 0) {
                             Spacer(
                                 modifier = Modifier
-                                    .padding(top = 4.dp)
+                                    .padding(top = (4 * wrappedLines).dp)
                                     .height((wrappedLines * 20).dp) // Adjust height based on your line height
                             )
                         }
@@ -167,7 +201,7 @@ fun TextEditorScreen() {
                     color = Color(0xFFFFFFFF),
                     fontSize = 16.sp,
                     fontFamily = FontFamily.Monospace,
-                    lineHeight = 24.sp,
+                    lineHeight = 26.495.sp,
                     platformStyle = PlatformTextStyle(
                         includeFontPadding = false
                     )
@@ -188,20 +222,6 @@ fun TextEditorScreen() {
                         innerTextField()
                     }
                 }
-            )
-        }
-
-        Row(
-            horizontalArrangement = Arrangement.End,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(8.dp)
-                .background(Color(0xFFFFFFFF))
-        ) {
-            val lines = editorText.split("\n")
-            Text(
-                text = "${lines.size}:${editorText.length}",
-                style = TextStyle(color = Color.Gray)
             )
         }
     }
