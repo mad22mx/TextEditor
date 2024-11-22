@@ -1,9 +1,14 @@
 package com.mmxapps.texteditor
 
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.RequiresApi
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -19,8 +24,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -47,22 +52,61 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mmxapps.texteditor.ui.theme.TextEditorTheme
+import java.time.LocalDateTime
+
 
 class MainActivity : ComponentActivity() {
+    var content = "" // I will handle this in a better way later
+    // Register document pick launcher
+    private val openDocumentLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let { readFile(it) } // Handle the selected document
+    }
+
+    // Register document creation launcher
+    private val createDocumentLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
+        uri?.let { writeFile(it, content) } // Write to the created document
+        content = ""
+    }
+
+    @RequiresApi(Build.VERSION_CODES.O)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
             TextEditorTheme {
-                TextEditorScreen()
+                TextEditorScreen(
+                    onOpenFile = { openDocumentLauncher.launch(arrayOf("text/plain")) }, // Trigger the file picker
+                    onSaveFile = { filename: String, content: String ->
+                        this.content = content
+                        createDocumentLauncher.launch(filename)
+                    }       // Trigger the file creator
+                )
             }
+        }
+    }
+
+    private fun readFile(uri: Uri) {
+        contentResolver.openInputStream(uri)?.bufferedReader().use { reader ->
+            val content = reader?.readText()
+            Log.d("FileContent", content ?: "No content")
+        }
+    }
+
+    private fun writeFile(uri: Uri, content: String) {
+        contentResolver.openOutputStream(uri)?.use { outputStream ->
+            outputStream.write(content.toByteArray(Charsets.UTF_8))
+            Log.d("FileWrite", "Content written successfully")
         }
     }
 }
 
+@RequiresApi(Build.VERSION_CODES.O)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TextEditorScreen() {
+fun TextEditorScreen(
+    onOpenFile: () -> Unit,
+    onSaveFile: (filename: String, content: String) -> Unit
+) {
     var editorText by remember { mutableStateOf("") }
     var filename by remember { mutableStateOf("") }
     Scaffold(
@@ -106,10 +150,21 @@ fun TextEditorScreen() {
                     IconButton(onClick = { editorText = "" }) {
                         Icon(Icons.Default.Add, contentDescription = "New")
                     }
-                    IconButton(onClick = { /* Open File */ }) {
-                        Icon(Icons.Default.Delete, contentDescription = "Open")
+                    IconButton(onClick = { onOpenFile() }) { // Call the open file callback
+                        Icon(Icons.AutoMirrored.Filled.List, contentDescription = "Open")
                     }
-                    IconButton(onClick = { /* Save File */ }) {
+                    IconButton(onClick = {
+                        if (filename.isEmpty()) {
+                            val date = LocalDateTime.now().toLocalDate()
+                            val time = LocalDateTime.now().toLocalTime()
+                            val datetime = (date.year.toString() + date.monthValue + date.dayOfMonth.toString() + time.hour.toString()
+                                    + time.minute.toString().padStart(2,'0') + time.second.toString().padStart(2,'0'))
+
+                            onSaveFile("Untitled$datetime.txt", editorText) // Call the save file callback ; unnamed
+                        } else {
+                            onSaveFile(filename, editorText) // Call the save file callback ; named
+                        }
+                         }) {
                         Icon(Icons.Default.Done, contentDescription = "Save")
                     }
                 }
@@ -119,19 +174,19 @@ fun TextEditorScreen() {
         val lazyListState = rememberLazyListState()
         val textFieldScrollState = rememberScrollState()
 
-        // Create synchronized scroll effect
+        // Create synchronized scroll effect , still needs fixing, the height of the index doesn't match with the btf
         LaunchedEffect(
             remember { derivedStateOf { lazyListState.firstVisibleItemIndex } },
             remember { derivedStateOf { lazyListState.firstVisibleItemScrollOffset } }) {
             textFieldScrollState.scrollTo(
                 lazyListState.firstVisibleItemScrollOffset +
                         (lazyListState.firstVisibleItemIndex * 50)
-            ) // Adjust 50 based on your item height
+            ) // heights needs adjusting current is set to 50
         }
 
         LaunchedEffect(textFieldScrollState.value) {
             if (!lazyListState.isScrollInProgress) {
-                val itemHeight = 50 // Adjust based on your item height
+                val itemHeight = 50
                 val targetItem = textFieldScrollState.value / itemHeight
                 lazyListState.scrollToItem(targetItem, textFieldScrollState.value % itemHeight)
             }
