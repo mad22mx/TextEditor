@@ -9,9 +9,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresApi
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -25,7 +25,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
-import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -56,10 +56,15 @@ import java.time.LocalDateTime
 
 
 class MainActivity : ComponentActivity() {
-    var content = "" // I will handle this in a better way later
+    private var content = "" // I will handle this in a better way later
+    private var editorText by mutableStateOf("")
+
     // Register document pick launcher
     private val openDocumentLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        uri?.let { readFile(it) } // Handle the selected document
+        uri?.let {
+            content = readFile(it).toString()
+
+        } // Handle the selected document
     }
 
     // Register document creation launcher
@@ -68,27 +73,11 @@ class MainActivity : ComponentActivity() {
         content = ""
     }
 
-    @RequiresApi(Build.VERSION_CODES.O)
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
-        setContent {
-            TextEditorTheme {
-                TextEditorScreen(
-                    onOpenFile = { openDocumentLauncher.launch(arrayOf("text/plain")) }, // Trigger the file picker
-                    onSaveFile = { filename: String, content: String ->
-                        this.content = content
-                        createDocumentLauncher.launch(filename)
-                    }       // Trigger the file creator
-                )
-            }
-        }
-    }
-
-    private fun readFile(uri: Uri) {
+    private fun readFile(uri: Uri): String? {
         contentResolver.openInputStream(uri)?.bufferedReader().use { reader ->
-            val content = reader?.readText()
-            Log.d("FileContent", content ?: "No content")
+            val contentR = reader?.readText()
+            Log.d("FileContent", contentR ?: "No content")
+            return contentR
         }
     }
 
@@ -98,17 +87,47 @@ class MainActivity : ComponentActivity() {
             Log.d("FileWrite", "Content written successfully")
         }
     }
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+
+        setContent {
+
+            TextEditorTheme {
+                TextEditorScreen(
+                    editorText = editorText,
+                    onTextChange = { editorText = it }, // Update the state
+                    onOpenFile = { onFileOpened ->
+                        openDocumentLauncher.launch(arrayOf("text/plain"))
+                        val contentRF = content
+                        content = ""
+                        onFileOpened(contentRF) // Pass the content to the callback
+                    }
+                    , // Trigger the file picker
+                    onSaveFile = { filename: String, content: String ->
+                        this.content = content
+                        createDocumentLauncher.launch(filename)
+                    }       // Trigger the file creator
+                )
+            }
+        }
+    }
 }
 
 @RequiresApi(Build.VERSION_CODES.O)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TextEditorScreen(
-    onOpenFile: () -> Unit,
-    onSaveFile: (filename: String, content: String) -> Unit
+    onOpenFile: (onFileOpened: (String) -> Unit) -> Unit, // Update the callback,
+    onSaveFile: (filename: String, content: String) -> Unit,
+    editorText: String,
+    onTextChange: (String) -> Unit, // Callback to update text
 ) {
-    var editorText by remember { mutableStateOf("") }
+
     var filename by remember { mutableStateOf("") }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -119,13 +138,10 @@ fun TextEditorScreen(
                         maxLines = 1,
                         textStyle = TextStyle(
                             color = Color.White,
-                            fontSize = 16.sp),
+                            fontSize = 12.sp),
                         cursorBrush = SolidColor(MaterialTheme.colorScheme.onSurface),
                         decorationBox = { innerTextField ->
-                            Box(
-                                modifier = Modifier
-                                    .padding(top = 4.dp)
-                            ) {
+                            Box {
                                 if (filename.isEmpty()) {
                                     Text(
                                         "*Untitled.txt",
@@ -147,10 +163,12 @@ fun TextEditorScreen(
                     actionIconContentColor = MaterialTheme.colorScheme.onSurface
                 ),
                 actions = {
-                    IconButton(onClick = { editorText = "" }) {
-                        Icon(Icons.Default.Add, contentDescription = "New")
+                    IconButton(onClick = { onTextChange("") }) {
+                        Icon(Icons.Default.Delete, contentDescription = "Delete")
                     }
-                    IconButton(onClick = { onOpenFile() }) { // Call the open file callback
+                    IconButton(onClick = {
+                        onOpenFile { onTextChange(it) }
+                    }) {
                         Icon(Icons.AutoMirrored.Filled.List, contentDescription = "Open")
                     }
                     IconButton(onClick = {
@@ -174,19 +192,20 @@ fun TextEditorScreen(
         val lazyListState = rememberLazyListState()
         val textFieldScrollState = rememberScrollState()
 
+
         // Create synchronized scroll effect , still needs fixing, the height of the index doesn't match with the btf
         LaunchedEffect(
             remember { derivedStateOf { lazyListState.firstVisibleItemIndex } },
             remember { derivedStateOf { lazyListState.firstVisibleItemScrollOffset } }) {
             textFieldScrollState.scrollTo(
                 lazyListState.firstVisibleItemScrollOffset +
-                        (lazyListState.firstVisibleItemIndex * 50)
-            ) // heights needs adjusting current is set to 50
+                        (lazyListState.firstVisibleItemIndex * 16 )
+            )
         }
 
         LaunchedEffect(textFieldScrollState.value) {
             if (!lazyListState.isScrollInProgress) {
-                val itemHeight = 50
+                val itemHeight = 16 * editorText.split("\n").size
                 val targetItem = textFieldScrollState.value / itemHeight
                 lazyListState.scrollToItem(targetItem, textFieldScrollState.value % itemHeight)
             }
@@ -197,48 +216,31 @@ fun TextEditorScreen(
                 .fillMaxSize()
         ) {
             val lines = editorText.split("\n")
-            val maxCharactersPerLine = 38
 
             LazyColumn(
                 modifier = Modifier
                     .width(30.dp)
                     .fillMaxHeight(),
-                state = lazyListState
+                state = lazyListState,
+                userScrollEnabled = false
             ) {
                 items(lines.size) { index ->
-                    // Calculate number of wrapped lines for the current text line
-                    val currentLine = lines[index]
-                    val wrappedLines = if (currentLine.isEmpty()) {
-                        0
-                    } else {
-                        (currentLine.length - 1) / maxCharactersPerLine
-                    }
-
                     Box(
-                        modifier = Modifier.padding(end = 8.dp)
+                        modifier = Modifier.padding(end = 8.dp) //padding at the rhs of the index
                     ) {
                         // Display the line number only for the first line
                         Text(
                             text = (index + 1).toString(),
                             modifier = Modifier
-                                .padding(top = 4.dp)
                                 .fillMaxWidth()
-                                .height(20.dp),
+                                .height(18.dp),
                             textAlign = TextAlign.End,
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                            fontFamily = FontFamily.Monospace
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 14.sp
                         )
 
-                        // Add spacing for wrapped lines
-
-                        if (wrappedLines > 0) {
-                            Spacer(
-                                modifier = Modifier
-                                    .padding(top = (4 * wrappedLines).dp)
-                                    .height((wrappedLines * 20).dp) // Adjust height based on your line height
-                            )
-                        }
                     }
                 }
             }
@@ -246,27 +248,23 @@ fun TextEditorScreen(
             // Main text editor
             BasicTextField(
                 value = editorText,
-                onValueChange = { newText ->
-                    editorText = newText
-                },
+                onValueChange = { onTextChange(it) },
                 modifier = Modifier
                     .fillMaxSize()
-                    .verticalScroll(textFieldScrollState),
+                    .verticalScroll(textFieldScrollState)
+                    .horizontalScroll(state = rememberScrollState(), enabled = true),
                 textStyle = TextStyle(
-                    color = Color(0xFFFFFFFF),
-                    fontSize = 16.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 14.sp,
                     fontFamily = FontFamily.Monospace,
-                    lineHeight = 26.495.sp,
+                    lineHeight = 18.sp,
                     platformStyle = PlatformTextStyle(
                         includeFontPadding = false
                     )
                 ),
                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                 decorationBox = { innerTextField ->
-                    Box(
-                        modifier = Modifier
-                            .padding(top = 4.dp)
-                    ) {
+                    Box{
                         if (editorText.isEmpty()) {
                             Text(
                                 "Start typing...",
